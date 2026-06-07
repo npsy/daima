@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="MonteCarlo.vcxproj" Id="91ef4995-e71e-496a-ada8-f057cf63d2dc" />
+</Solution>

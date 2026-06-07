@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="FindMaxMin.vcxproj" Id="01006267-3f09-40a6-9cc3-e086500a5a52" />
+</Solution>

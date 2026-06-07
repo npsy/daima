@@ -1,0 +1,152 @@
+clc;
+close all;
+
+%% ============================================================
+% Geometry
+%% ============================================================
+global SOD SDD ODD dNum dSize pNum pSize views
+
+SOD   = 1000;
+SDD   = 1500;
+ODD   = SDD - SOD;
+
+dNum  = 256;
+dSize = 1.0;
+
+pNum  = 256;
+pSize = 1.0;
+
+views = 180;          % 初始全采样角度数（用于生成投影）
+
+%% ============================================================
+% Phantom
+%% ============================================================
+dh = dNum * dSize / 2;
+R_fov = SOD * dh / sqrt(dh^2 + SDD^2);   % mm
+
+h = pNum;
+img_center = (h + 1) / 2;
+u = ((1:h) - img_center) * pSize;
+v = (img_center - (1:h)) * pSize;
+[imgX, imgY] = meshgrid(u, v);
+
+P = phantom('Modified Shepp-Logan', h);
+P = max(P, 0);
+P = P ./ max(P(:));
+
+margin = 1.0;
+mask = (imgX.^2 + imgY.^2) <= (R_fov - margin)^2;
+P = P .* mask;
+P = max(P, 0);
+if max(P(:)) > 0
+    P = P ./ max(P(:));
+end
+
+figure;
+imagesc(u, v, P);
+axis image off;
+colormap gray;
+colorbar;
+title('Ground Truth (FOV-cropped)');
+
+%% ============================================================
+% Projection (full sampling first, then downsample)
+%% ============================================================
+fprintf('Generating fan-beam projection...\n');
+proj_fan_full = forward_project_cone(P);
+
+proj_fan_full = real(proj_fan_full);
+proj_fan_full(isnan(proj_fan_full)) = eps;
+proj_fan_full(proj_fan_full <= 0) = eps;
+
+% ========== 稀疏角修改：每隔 3 个投影取 1 个 ==========
+step = 3;                              % 降采样步长
+proj_fan = proj_fan_full(:, 1:step:end);   % 
+views = size(proj_fan, 2);             % 
+% ===================================================
+
+figure;
+imagesc((0:views-1)*(360/views), 1:dNum, proj_fan);
+axis tight;
+colormap gray;
+colorbar;
+xlabel('View (deg)');
+ylabel('Detector');
+title('Fan-beam Sinogram (Sparse View)');
+
+%% ============================================================
+% FBP Reconstruction (fan-beam -> rebin -> parallel FBP)
+%% ============================================================
+fprintf('\nStarting FBP reconstruction (sparse view)...\n');
+
+tic;
+
+% Step 1: Rebinning to parallel beam
+[P_para, theta_para, s_para] = rebin_fan2para(proj_fan);
+
+% Step 2: Ramp filtering
+d_s = s_para(2) - s_para(1);
+P_filt = filter_sinogram(P_para, d_s);   % Ram-Lak filter, full bandwidth
+
+% Step 3: Backprojection
+img_fbp = fbp_backproject(P_filt, theta_para, s_para);
+
+runtime = toc;
+
+% Post-processing
+img_fbp = real(img_fbp);
+img_fbp(isnan(img_fbp)) = 0;
+img_fbp(isinf(img_fbp)) = 0;
+img_fbp = max(img_fbp, 0);
+
+%% ============================================================
+% Metrics
+%% ============================================================
+mse_val = mean((img_fbp(:) - P(:)).^2);
+psnr_val = psnr(img_fbp, P);
+ssim_val = ssim(img_fbp, P);
+
+fprintf('FBP Results (Sparse View):\n');
+fprintf('  MSE  = %.6f\n', mse_val);
+fprintf('  PSNR = %.3f dB\n', psnr_val);
+fprintf('  SSIM = %.5f\n', ssim_val);
+fprintf('  Runtime = %.3f sec\n', runtime);
+
+%% ============================================================
+% Display Results
+%% ============================================================
+figure('Position', [100 100 1200 400]);
+subplot(1,3,1)
+imagesc(P);
+axis image off;
+colormap gray;
+colorbar;
+title('Ground Truth');
+
+subplot(1,3,2)
+imagesc(img_fbp);
+axis image off;
+colormap gray;
+colorbar;
+title('FBP Reconstruction (Sparse View)');
+
+subplot(1,3,3)
+imagesc(abs(img_fbp - P));
+axis image off;
+colormap hot;
+colorbar;
+title('Error Map');
+
+%% ============================================================
+% Save Results
+%% ============================================================
+Result.views     = views;
+Result.psnr      = psnr_val;
+Result.ssim      = ssim_val;
+Result.mse       = mse_val;
+Result.runtime   = runtime;
+Result.img_fbp   = img_fbp;
+
+save('FBP_Result_SparseView.mat', 'Result');
+
+fprintf('\nFinished.\n');

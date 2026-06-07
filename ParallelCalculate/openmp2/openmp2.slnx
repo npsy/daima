@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="openmp2/openmp2.vcxproj" Id="96306c9b-fd06-4e12-8be7-c4c0bee0e7f8" />
+</Solution>
